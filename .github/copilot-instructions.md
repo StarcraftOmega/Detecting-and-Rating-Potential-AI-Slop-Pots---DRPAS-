@@ -4,11 +4,14 @@
 
 RateThatSlop is a Chrome Manifest V3 extension for detecting potentially
 AI-generated sewing-pattern images on Etsy and presenting a separate,
+authenticated and opt-in at the feature level. Image inference remains local
 explainable listing-risk rating. Keep the extension local-first: image inference runs in the browser and image
 bytes must never be uploaded by ordinary server lookups, score reads, score
-submissions, reports, or description evaluation. Server synchronization is
-authenticated and opt-in at the feature level. Image inference remains local
-by default.
+submissions, reports, description evaluation, or review evaluation. Authenticated
+description/review evaluations may send relevant text and bounded image
+URL/alt-text metadata to the server, but must never send image bytes. Server
+synchronization is authenticated and opt-in at the feature level. Image
+inference remains local by default.
 
 ## Architecture
 
@@ -20,6 +23,10 @@ by default.
 - `extension/src/content/index.js` owns Etsy DOM discovery, listing metadata
   extraction, throttled image requests, and page badges. Keep model logic out
   of the content script.
+- Review evaluation uses `scrapeReviewsAndImages`'s `{ ratings, reviews,
+  images, reviewImages }` payload and sends it through `aid:evaluate-reviews`
+  in the background to the authenticated `/api/reviews/evaluate` endpoint.
+  The content script currently neither persists nor presents the response.
 - Treat `extension/src/content/index.js` as the stable Etsy integration
   surface for the current scraper contract. When changing inference routing,
   do not modify this file unless the user explicitly requests it; adapt the
@@ -61,7 +68,7 @@ by default.
   are account-gated features and must use authenticated API requests.
 - A signed-in user may read shared listing data and contribute reports. An
   unsigned user may use local image inference but must not access any server
-  feature or AI description evaluation.
+  feature, AI description evaluation, or AI review evaluation.
 - Prefer a server-stored listing rating when a matching listing record is
   available and fresh. Run local image inference when the listing is not
   stored, the cache is stale, or the user is not signed in.
@@ -130,10 +137,23 @@ by default.
 - On listing pages, scope current-post gallery extraction to Etsy's listing
   gallery markers such as
   `.listing-page-image-carousel-component [data-palette-listing-image] img`
-  and `[data-listing-image] img`. Scope customer-uploaded review photos to
-  `[data-location="customer-photo-section"] img`. Do not use broad
+  and `[data-listing-image] img`. Do not use broad
   `data-palette-listing-image` selectors because Etsy also applies that marker
   to recommendation cards.
+- Prefer current Etsy review cards marked `[data-review-region]`. Extract
+  review text from `.wt-text-body [data-review-text-toggle-wrapper] p` and
+  ratings from each card's `input[name="rating"]`; do not mistake seller
+  responses for review text. Collect customer photos within each card from
+  `button.appreciation-photo img`, retaining
+  `[data-location="customer-photo-section"] img` as a legacy fallback.
+  Review-photo thumbnails may be smaller than product images, so do not apply
+  the product-image minimum-dimension filter to them. Still restrict them to
+  Etsy-hosted URLs, exclude utility images, deduplicate, and enforce the
+  100-image cap.
+- Limit scraped review text to 100 entries, at 2,000 characters each. Keep
+  reviews as `{ text, rating }` entries and `reviewImages` as a separate flat
+  list of `{ url, alt }` metadata. The current payload does not associate a
+  review photo with an individual review.
 - Keep page-wide AI analysis separate from scraped listing evidence: analyze
   all eligible Etsy-hosted images, including related/recommended images, while
   excluding tracking pixels, avatars, icons, logos, and other utility images
@@ -193,9 +213,14 @@ by default.
   the item average, review count, item quality, shipping, customer service,
   and buyer-recommendation values.
 - Individual reviews are separate from the summary and may include review
-  text, star values, reviewer metadata, dates, and purchase photos. Customer
-  photos are marked with
-  `[data-location="customer-photo-section"]`.
+  text, star values, reviewer metadata, dates, and purchase photos. Current
+  cards use `[data-review-region]`; review text is nested under
+  `.wt-text-body [data-review-text-toggle-wrapper] p`, and the star value is
+  in `input[name="rating"]`. Customer photos are found via
+  `button.appreciation-photo img`, with
+  `[data-location="customer-photo-section"] img` retained as a legacy
+  fallback. Review photos are returned separately from review entries, with
+  no per-review association.
 - Related products, shop recommendations, visual-search cards, and related
   searches occur elsewhere on the page. They commonly reuse Etsy listing
   markers such as `data-palette-listing-image`, so they must not be confused
@@ -275,7 +300,8 @@ by default.
 - `extension/src/background/api-client.js` owns authenticated requests to the
   RateThatSlop server and must centralize authorization, response validation,
   timeout handling, and explicit error propagation. Its current operations are
-  listing-score reads, listing-score submissions, and description evaluation.
+  listing-score reads, listing-score submissions, description evaluation, and
+  review evaluation.
 - `extension/src/background/auth.js` owns the stored access-token session and
   expiry handling. Never log credentials or access tokens. Do not make local
   image inference depend on server availability.
@@ -283,8 +309,10 @@ by default.
   checking the deployed RateThatSlop API health endpoint. The production API
   base URL is
   `https://rate-my-slop-xzld5.ondigitalocean.app`; do not default the merged
-  login flow to localhost. Scanning and local image inference must continue to
-  work when this server or Supabase is unavailable.
+  login flow to localhost. A localhost override is temporary for local
+  backend development only and must be marked and restored to production
+  before release. Scanning and local image inference must continue to work
+  when this server or Supabase is unavailable.
 - `aid:sign-in` and `aid:sign-up` are background message operations. Auth
   responses must preserve explicit errors, store only the access-token session
   metadata, and never expose or log passwords, secret keys, or tokens.
@@ -315,8 +343,9 @@ by default.
   `descriptionAiEnabled` gates description evaluation,
   `userReviewsEnabled` gates user-review reads and writes, and
   `etsyReviewsEnabled` excludes Etsy review text, ratings, and customer-review
-  photos from scraping. Keep local image inference independent of these
-  settings.
+  photos from scraping and gates review evaluation. Review evaluation also
+  requires `scrapingEnabled`; there is no separate review-AI toggle. Keep local
+  image inference independent of these settings.
 - Settings must not bypass authentication. Enabling a server-related toggle
   must still require a valid signed-in session, and disabling a toggle must
   prevent the corresponding request rather than sending it and ignoring the
@@ -324,10 +353,13 @@ by default.
   operations.
 - Backend server routes are mounted in `backend/server.js`: authenticated
   score reads and writes are under `/api/scores`, description evaluation is
-  under `/api/descriptions/evaluate`, and reports remain under
-  `/api/reports`. Keep server responses structured so the UI can display the
-  overall score, per-image scores, source, model/scoring versions, reasons,
-  and calculation timestamps.
+  under `/api/descriptions/evaluate`, review evaluation is under
+  `/api/reviews/evaluate`, and reports remain under `/api/reports`. The review
+  route accepts `{ reviewsAndImages: { ratings, reviews, images,
+  reviewImages } }`, validates bounded review and image metadata, and requires
+  authentication. Send review text/ratings and image URLs/alt text only, never
+  image bytes. Its result currently returns to the content script but is not
+  persisted or presented in the UI.
 - Backend score writes must validate numeric scores to the unit interval,
   cap submissions at 100 images, and store image hashes rather than image
   bytes. Database constraints and validation must remain aligned.
