@@ -4,10 +4,12 @@ RateThatSlop is a Manifest V3 Chrome extension that estimates whether Etsy
 sewing-pattern listing images may be AI-generated. Inference runs locally in
 the browser using the bundled ONNX model.
 
-The authenticated server provides shared listing ratings, per-image analysis
-scores, trusted creator information, Etsy review data, extension user
-reports, and AI evaluation of listing text. Unsigned users remain local-only
-and cannot read or write server data or request description evaluation.
+The server provides shared listing ratings, per-image analysis scores, trusted
+creator information, Etsy review data, extension user reports, and AI
+evaluation of listing text. Listing score and hash-only image-score
+synchronization is temporarily available without a signed-in user for the
+hackathon path; description evaluation and other authenticated features still
+require sign-in.
 
 ## Development
 
@@ -59,8 +61,9 @@ metadata is expected and does not prevent image analysis.
 The popup's **Feature settings** switches are enabled by default for scraping,
 server score uploads, shared server information, AI description testing, user
 reviews, and Etsy reviews. Turning a switch off prevents that operation; local
-image inference remains available. Server operations also require a signed-in
-RateThatSlop account regardless of the switch state.
+image inference remains available. Listing and hash-only image score paths are
+the temporary unauthenticated hackathon exception; other server operations
+require a signed-in RateThatSlop account.
 
 When a listing page is opened, three bounded scrapers collect listing identity,
 product instructions/details, and review/rating/image inputs. Scraping can be
@@ -92,13 +95,13 @@ are sent.
 
 The extension requests Etsy CDN host access because product images are commonly
 served from `i.etsystatic.com`, not `etsy.com`. Images are fetched by the
-local offscreen inference document and are not uploaded to a remote service.
-In the server-backed flow, a signed-in user can download a fresh stored rating
-for a known listing. Each image is matched by its local SHA-256 image-byte hash;
-matching server results are shown without running local inference, while
-missing or stale results fall back to local inference. Server records are
-cached for seven days. Image inference remains local and image bytes are never
-uploaded by these APIs.
+local offscreen inference document and image bytes are never uploaded. In the
+server-backed flow, listing images can use a fresh stored listing rating, while
+feed, recommendation, and other page-wide images can use the standalone
+hash-only image-score record. Each image is matched by its local SHA-256
+image-byte hash; matching server results are shown without running local
+inference, while missing or stale results fall back to local inference. Server
+records are cached for seven days.
 
 The initial local inference runtime and model manifest were copied from the
 Sieve image detector project. The original project is available at
@@ -122,7 +125,9 @@ For the hackathon demo, score reads and writes do not require a signed-in
 extension user. The backend uses its configured Supabase database key; apply
 the deployed Supabase permissions in
 [`backend/database/migrations/001_hackathon_public_score_access.sql`](./backend/database/migrations/001_hackathon_public_score_access.sql).
-Run that migration in the Supabase SQL editor before testing score saves.
+Run that migration and
+[`backend/database/migrations/002_standalone_image_scores.sql`](./backend/database/migrations/002_standalone_image_scores.sql)
+in the Supabase SQL editor before testing score or page-wide image saves.
 
 Routes are grouped by responsibility:
 
