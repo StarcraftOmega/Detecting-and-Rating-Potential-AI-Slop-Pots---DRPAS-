@@ -49,6 +49,13 @@ by default.
   explicit failure or signed-out states. A successful login must retry the
   current listing scan so a prior signed-out assessment can be replaced with
   the authenticated result.
+- Every assessment event rendered by `tabs-ui.js` must have a matching DOM
+  element binding initialized before the listener is registered. Every
+  assessment request declared in `extension/src/popup/index.js`, including
+  seller-scoped trusted-creator lookup, must be invoked from the listing scan
+  lifecycle and must dispatch a terminal available, unknown, unavailable, or
+  error state; a placeholder such as "Checking…" must never remain solely
+  because a request was defined but not called.
 - Keep raw image detection separate from listing rating. Detection estimates
   AI likelihood; rating combines image evidence with carefully bounded listing
   signals.
@@ -66,6 +73,15 @@ by default.
   are account-gated features and must use authenticated API requests, except
   for the temporary public score-sync path documented below. The temporary
   `/api/scores` path permits unauthenticated score reads and writes only.
+- Trusted-creator status is seller-scoped, never listing-scoped. Extract the
+  current seller name from `[data-seller-cred-anchor]` and query the dedicated
+  `/api/scores/trusted-creator/:username` route independently of the current
+  listing ID. Compare the seller name case-insensitively with the existing
+  quoted `"Username"` column in `score_snapshots`; do not change how that
+  database value is stored. Treat only `trusted_creator_score === 1` as
+  trusted. A matching `0`, `NULL`, missing row, or failed/unavailable server
+  check must not be presented as trusted, and a failed check must remain
+  distinct from a confirmed unknown seller.
 - Prefer a fresh server-stored listing rating and matching per-image result
   over local cached or ONNX results, including for signed-out users through
   the temporary public score-read path. A server record with a missing or
@@ -256,7 +272,8 @@ by default.
   WebGPU execution-provider path is implemented.
 - Add tests for preprocessing, calibration, invalid images, Etsy DOM
   extraction, deduplication, dynamic/lazy-loaded listings, repeated image
-  badge routing, popup states, and rating boundaries.
+  badge routing, popup assessment request/event completion, popup states, and
+  rating boundaries.
 - Do not claim the extension is complete while the model, offscreen runtime,
   popup, or Etsy content script is still a placeholder.
 
@@ -358,6 +375,11 @@ by default.
   hackathon; description evaluation is under `/api/evaluate-description`
   (with the `/api/descriptions` route retained as a compatible route group),
   and reports remain under `/api/reports`.
+  The seller-only trusted-creator lookup is part of the temporary public score
+  read path. It must search all matching seller rows and select a stored trust
+  value of exactly `1` when any matching row has one; do not rely on a single
+  listing snapshot or database null ordering. Preserve the response's checked
+  state and explicit `null` value when no usable trust flag exists.
   Description evaluation remains authenticated and returns the structured AI
   assessment for the popup, including the evaluator's 0-100 value, a
   normalized `descriptionScore` in the 0-1 interval, and a cleaned
@@ -376,6 +398,24 @@ by default.
   provide and apply an explicit Supabase SQL migration such as
   `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, then verify the live columns
   before diagnosing missing data as a client-cache issue.
+- When changing trusted-creator lookup routes, redeploy the backend before
+  diagnosing extension behavior. Verify the deployed
+  `/api/scores/trusted-creator/<seller-name>` response directly and test at
+  least two listings from the same seller; a `401`, `404`, listing-only
+  response, or a response missing `"Username"`/`trusted_creator_score`
+  indicates that the deployed service is stale or misconfigured.
+- Before diagnosing score/report writes, run the backend locally with the
+  ignored `backend/.env` and perform read-only checks against `/api/health`,
+  `/api/test-db`, and each application table. Then perform one controlled
+  score write using non-sensitive test metadata when validating the hackathon
+  path. Do not print credentials. A `200` health response only proves the HTTP
+  process is alive; a `500` from a write route requires the server's
+  underlying Supabase error from deployment logs.
+- Preserve the distinction between expected score cache misses (`404 Pattern
+  not found`), invalid user authentication (`401`), database/write failures
+  (`500`), and hosting/database timeouts (`504`, often non-JSON HTML). Do not
+  log expected cache misses as failures or replace actionable upstream errors
+  with a generic success-shaped response.
 - Keep server feature tests in `extension/test/api-client.test.js`,
   `extension/test/auth.test.js`, and
   `extension/test/listing-cache.test.js`.

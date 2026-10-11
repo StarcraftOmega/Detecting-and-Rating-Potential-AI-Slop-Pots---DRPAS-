@@ -45,3 +45,26 @@ test("server description scores are preserved when valid", () => {
   assert.equal(normalized.descriptionScore, 0.72);
   assert.equal(normalized.descriptionRationale, "Detailed rationale");
 });
+
+test("server image hashes are normalized for result reuse", () => {
+  const normalized = normalizeServerScore({
+    score: {
+      Username: "SoftpawVintage",
+      aggregate_score: 0.4,
+      calculated_at: new Date().toISOString(),
+      images: [{
+        image_hash: "sha256-image-id",
+        ai_score: 0.82,
+        model_version: "w5810",
+      }],
+    },
+  });
+
+  assert.equal(normalized.username, "SoftpawVintage");
+  assert.deepEqual(normalized.images, [{
+    imageId: "sha256-image-id",
+    score: 0.82,
+    modelVersion: "w5810",
+    analyzedAt: normalized.calculatedAt,
+  }]);
+});

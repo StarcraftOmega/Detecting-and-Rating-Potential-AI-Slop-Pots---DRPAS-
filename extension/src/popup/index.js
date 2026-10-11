@@ -10,6 +10,7 @@ const manualResultMeta = document.querySelector("#manual-result-meta");
 const analyzeButton = form.querySelector("button");
 const settingInputs = [...document.querySelectorAll("[data-setting]")];
 const DESCRIPTION_CACHE_PREFIX = "description-assessment:";
+const REVIEWS_CACHE_PREFIX = "reviews-assessment:";
 
 async function loadSettings() {
   const response = await chrome.runtime.sendMessage({ kind: "aid:get-settings" });
@@ -117,11 +118,20 @@ function descriptionAssessmentState(listing, storedScore = null) {
 }
 
 async function requestSellerAssessment(listing) {
+  const seller = typeof listing?.seller === "string" ? listing.seller.trim() : "";
+  if (!seller) {
+    const assessment = lookupTrustedCreator({ serverChecked: false }, seller);
+    document.dispatchEvent(new CustomEvent("rts:seller-assessment", {
+      detail: assessment,
+    }));
+    return assessment;
+  }
+
   let response;
   try {
     response = await chrome.runtime.sendMessage({
       kind: "aid:get-trusted-creator",
-      username: listing.seller,
+      username: seller,
     });
   } catch (error) {
     response = { ok: false, error: error.message };
@@ -131,7 +141,7 @@ async function requestSellerAssessment(listing) {
       serverChecked: response.assessment?.checked === true,
       username: response.assessment?.username,
       trustedCreatorScore: response.assessment?.trustedCreatorScore,
-    }, listing.seller)
+    }, seller)
     : {
       status: "unavailable",
       message: response?.error || "Trusted creator status could not be checked.",
@@ -146,10 +156,69 @@ function isAuthenticationRequiredError(error) {
   return /sign-in is required for server features/i.test(error?.message || "");
 }
 
-async function requestDescriptionAssessment(listing, storedScore = null) {
+function reviewsFingerprint(reviewsAndImages) {
+  return JSON.stringify(reviewsAndImages);
+}
+
+function reviewsAssessmentState(reviewsAndImages) {
+  const reviewCount = Array.isArray(reviewsAndImages?.reviews) ? reviewsAndImages.reviews.length : 0;
+  const photoCount = Array.isArray(reviewsAndImages?.reviewImages) ? reviewsAndImages.reviewImages.length : 0;
+  const ratings = typeof reviewsAndImages?.ratings === "string" ? reviewsAndImages.ratings.trim() : "";
+  if (!reviewCount && !photoCount && !ratings) {
+    return { status: "unavailable", message: "No review information was available to assess." };
+  }
+  return { status: "pending", message: "Reviews submitted. Waiting for AI review…" };
+}
+
+async function requestReviewsAssessment(listing, { forceRefresh = false } = {}) {
+  const reviewsAndImages = listing.reviewsAndImages;
+  const initial = reviewsAssessmentState(reviewsAndImages);
+  if (initial.status !== "pending") {
+    document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: initial }));
+    return initial;
+  }
+  const cacheKey = `${REVIEWS_CACHE_PREFIX}${listing.listingId || "unknown"}`;
+  const fingerprint = reviewsFingerprint(reviewsAndImages);
+  const cached = await chrome.storage.local.get(cacheKey);
+  if (!forceRefresh && cached[cacheKey]?.fingerprint === fingerprint) {
+    const assessment = { status: "available", result: cached[cacheKey].result };
+    document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: assessment }));
+    return assessment;
+  }
+  document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: initial }));
+  try {
+    const response = await chrome.runtime.sendMessage({
+      kind: "aid:evaluate-reviews",
+      reviewsAndImages,
+    });
+    if (!response?.ok) throw new Error(response?.error || "Reviews assessment failed");
+    const score = Number(response.result?.review_text_ai_assessment?.ai_likeness_score);
+    if (!Number.isInteger(score) || score < 0 || score > 100) {
+      throw new Error("AI returned an invalid reviews assessment");
+    }
+    const assessment = { status: "available", result: response.result };
+    await chrome.storage.local.set({
+      [cacheKey]: { fingerprint, result: response.result, cachedAt: new Date().toISOString() },
+    });
+    document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: assessment }));
+    return assessment;
+  } catch (error) {
+    const message = isAuthenticationRequiredError(error)
+      ? "Not available until login."
+      : error.message || "Reviews assessment failed";
+    const assessment = isAuthenticationRequiredError(error)
+      ? { status: "unavailable", message }
+      : { status: "error", message };
+    document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: assessment }));
+    if (assessment.status === "error") console.error("Reviews assessment failed:", error);
+    return assessment;
+  }
+}
+
+async function requestDescriptionAssessment(listing, storedScore = null, { forceRefresh = false } = {}) {
   const description = typeof listing.description === "string" ? listing.description.trim() : "";
   if (!description) return;
-  if (hasDescriptionScore(storedScore)) {
+  if (!forceRefresh && hasDescriptionScore(storedScore)) {
     const assessment = descriptionAssessmentState(listing, storedScore);
     document.dispatchEvent(new CustomEvent("rts:description-assessment", { detail: assessment }));
     return assessment;
@@ -157,7 +226,7 @@ async function requestDescriptionAssessment(listing, storedScore = null) {
 
   const cacheKey = `${DESCRIPTION_CACHE_PREFIX}${listing.listingId || "unknown"}`;
   const cached = await chrome.storage.local.get(cacheKey);
-  if (cached[cacheKey]?.fingerprint === descriptionFingerprint(description) &&
+  if (!forceRefresh && cached[cacheKey]?.fingerprint === descriptionFingerprint(description) &&
       hasDescriptionAssessmentScore(cached[cacheKey]?.result)) {
     const assessment = { status: "available", result: cached[cacheKey].result };
     document.dispatchEvent(new CustomEvent("rts:description-assessment", { detail: assessment }));
@@ -216,8 +285,13 @@ async function scanCurrentPage() {
   try {
     await requireScrapingEnabled();
     const listing = await getCurrentEtsyPage();
-    const images = Array.isArray(listing.images) ? listing.images.slice(0, 20) : [];
-    const storedScore = listing.listingId
+    const evidenceImages = Array.isArray(listing.images) ? listing.images : [];
+    const images = Array.isArray(listing.analyzableImages) && listing.analyzableImages.length
+      ? listing.analyzableImages.slice(0, 100)
+      : evidenceImages.slice(0, 100);
+    const sellerAssessmentPromise = requestSellerAssessment(listing);
+    const evidenceUrls = new Set(evidenceImages.map((image) => image.url));
+    const storedScore = !forceRefresh && listing.listingId
       ? await chrome.runtime.sendMessage({
         kind: "aid:get-listing-score",
         listingId: listing.listingId,
@@ -244,11 +318,11 @@ async function scanCurrentPage() {
         images: scoreItems,
         listingScore,
         descriptionAssessment: descriptionAssessmentState(listing),
-        sellerAssessment: { status: "pending", message: "Checking trusted creator status…" },
+        reviewsAssessment: reviewsAssessmentState(listing.reviewsAndImages),
       }
     }));
-    const descriptionPromise = requestDescriptionAssessment(listing, listingScore);
-    const sellerPromise = requestSellerAssessment(listing);
+    const descriptionPromise = requestDescriptionAssessment(listing, listingScore, { forceRefresh });
+    const reviewsPromise = requestReviewsAssessment(listing, { forceRefresh });
 
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
@@ -279,10 +353,9 @@ async function scanCurrentPage() {
       }));
     }
     const descriptionAssessment = await descriptionPromise;
-    const sellerAssessment = await sellerPromise;
-    const descriptionPercent = hasDescriptionAssessmentScore(descriptionAssessment?.result)
-      ? descriptionAssessment.result.ai_likeness_score
-      : null;
+    const reviewsAssessment = await reviewsPromise;
+    await sellerAssessmentPromise;
+    const descriptionPercent = Number(descriptionAssessment?.result?.ai_likeness_score);
     const imageScores = scoreItems
       .map((item) => item.result)
       .filter((result) => Number.isFinite(Number(result?.score)))
@@ -341,7 +414,7 @@ async function scanCurrentPage() {
     }
     document.dispatchEvent(new CustomEvent("rts:analysis", {
       detail: { type: "listing", title: listing.title || "Current Etsy listing", images: scoreItems, listingScore,
-        descriptionAssessment, sellerAssessment }
+        descriptionAssessment, reviewsAssessment }
     }));
   } catch (error) {
     document.dispatchEvent(new CustomEvent("rts:scan-unavailable", {

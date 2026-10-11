@@ -24,6 +24,12 @@ and Etsy reviews. They default to enabled for compatibility, but disabled
 features do not run. Server reads, writes, reviews, and description evaluation
 remain authenticated and unavailable to signed-out users.
 
+Page-wide images that are not associated with a listing are synchronized, when
+score uploads are enabled, only as a SHA-256 image hash, normalized AI score,
+model version, optional source URL, and calculation timestamp. A later page
+scan hashes the fetched bytes locally and can reuse that hash-only server
+result; image bytes are never uploaded.
+
 Completed local inference results are cached in Chrome extension storage as
 compact result metadata keyed by a SHA-256 hash of the fetched image bytes.
 The cache does not store downloaded image bytes or full pasted-image data

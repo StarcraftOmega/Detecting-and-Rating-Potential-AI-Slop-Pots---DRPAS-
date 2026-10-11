@@ -1,5 +1,7 @@
 :root {
   color-scheme: light;
+  --sidebar-width: 220px;
+  --main-panel-width: 480px;
   --ink: #3f291f;
   --cream: #fff8e8;
   --cream-panel: #fff8e8;
@@ -42,8 +44,14 @@ html,
 body {
   margin: 0;
   padding: 0;
-  width: 720px;
+  width: calc(var(--sidebar-width) + var(--main-panel-width));
   background: var(--cream-panel);
+  transition: width 220ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+html.sidebar-collapsed,
+html.sidebar-collapsed body {
+  width: var(--main-panel-width);
 }
 
 body {
@@ -67,24 +75,35 @@ input {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, var(--main-panel-width));
+  grid-template-rows: minmax(0, 1fr);
   min-height: 470px;
+  max-height: 600px;
   border: none;
   border-radius: 0;
   background: var(--cream-panel);
   box-shadow: none;
   overflow: hidden;
+  transition: grid-template-columns 220ms cubic-bezier(0.2, 0.75, 0.25, 1);
 }
 
 .sidebar {
   position: relative;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 28px 22px 22px;
+  padding: 24px 12px 18px;
   background: var(--sidebar);
   border-right: 2.4px solid var(--ink);
   overflow: hidden;
   color: var(--cream);
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+  transition:
+    opacity 150ms ease,
+    transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    visibility 0s;
 }
 
 .sidebar-blob,
@@ -119,6 +138,29 @@ input {
   transform: rotate(12deg);
 }
 
+.panel-fox-badge {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: #fff7e8;
+  box-shadow: 3px 3px 0 var(--ink);
+  transform: rotate(6deg);
+  pointer-events: none;
+}
+
+.panel-fox-badge img {
+  display: block;
+  width: 30px;
+  height: 30px;
+}
+
 .brand-row {
   position: relative;
   z-index: 1;
@@ -138,6 +180,10 @@ input {
   background: #fff7e8;
   box-shadow: 4px 4px 0 0 var(--ink);
   transform: rotate(-3deg);
+}
+
+.brand-mark img {
+  transform: translate(-2px, -3px);
 }
 
 .brand-name {
@@ -177,6 +223,44 @@ input {
 
 .pill-yellow {
   background: var(--yellow);
+}
+
+.slogan-callout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  margin: 0;
+  padding: 9px 7px;
+  border: 1.6px solid var(--ink);
+  border-radius: 999px;
+  background: var(--yellow);
+  box-shadow: 4px 4px 0 0 var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--ink);
+  text-align: center;
+}
+
+.slogan-callout > img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.slogan-subtitle {
+  margin: 14px 0 0;
+  font-family: var(--font-display);
+  font-size: 29px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  line-height: 1.05;
+  color: var(--cream);
+  text-align: left;
 }
 
 .pill-orange {
@@ -339,10 +423,13 @@ input {
 }
 
 .panel {
+  position: relative;
   display: flex;
   flex-direction: column;
-  padding: 28px 28px 20px;
+  min-height: 0;
+  padding: 28px 16px 72px 28px;
   min-width: 0;
+  overflow-y: auto;
 }
 
 .settings-actions {
@@ -718,12 +805,25 @@ input {
 }
 
 
-/* Step 1: independent sidebar + right-panel navigation */
+/* Independent sidebar and right-panel navigation */
 [hidden] { display: none !important; }
 
-.app-card { grid-template-columns: 260px minmax(0, 1fr); }
-.app-card.sidebar-collapsed { grid-template-columns: 44px minmax(0, 1fr); }
-.app-card.sidebar-collapsed .sidebar { padding: 0; }
+.app-card {
+  width: 100%;
+  grid-template-columns: var(--sidebar-width) minmax(0, var(--main-panel-width));
+}
+.app-card.sidebar-collapsed { grid-template-columns: 0 minmax(0, var(--main-panel-width)); }
+.app-card.sidebar-collapsed .sidebar {
+  opacity: 0;
+  transform: translateX(-12px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 150ms ease,
+    transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    visibility 0s linear 220ms;
+}
+.app-card.sidebar-collapsed > .sidebar-toggle { left: 0; }
 
 .sidebar { position: relative; }
 .sidebar-content {
@@ -736,7 +836,7 @@ input {
 .sidebar-toggle {
   position: absolute;
   top: 10px;
-  right: 8px;
+  left: 184px;
   z-index: 20;
   width: 28px;
   height: 28px;
@@ -746,10 +846,18 @@ input {
   color: var(--ink);
   font-weight: 800;
   cursor: pointer;
+  transition: left 220ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.main-controls {
+  display: flex;
+  align-items: flex-start;
 }
 
 .popup-nav {
   display: flex;
+  flex: 1;
+  min-width: 0;
   gap: 6px;
   margin-bottom: 20px;
 }

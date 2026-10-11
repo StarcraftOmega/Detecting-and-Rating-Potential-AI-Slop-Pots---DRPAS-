@@ -9,16 +9,12 @@ const scoresEmpty = $("#scores-empty");
 const scoresData = $("#scores-data");
 const scoresImages = $("#scores-images");
 const scoresHeading = $("#scores-heading");
-const descriptionAssessment = $("#scores-description-assessment");
 const sellerAssessment = $("#scores-seller-assessment");
+const descriptionAssessment = $("#scores-description-assessment");
+const reviewsAssessment = $("#scores-reviews-assessment");
 //const scoresSummary = $("#scores-summary");
 
 const retryButton = $("#scores-retry");
-<<<<<<< HEAD
-const reportLoginButton = $("#scores-report-login");
-
-=======
->>>>>>> parent of 2358478 (Merge branch 'JonathonFinshingUp' into Sindhu-branch)
 retryButton.addEventListener("click", () => {
   $("#scores-empty-message").textContent = "Scanning this listing…";
   document.dispatchEvent(new Event("rts:scan-requested"));
@@ -30,7 +26,6 @@ document.addEventListener("rts:scan-unavailable", (event) => {
     scoresEmpty.hidden = false;
   }
 });
-$("#scores-report-login").addEventListener("click", () => showView("auth"));
 
 // Display Etsy thumbnails immediately, then update scores.
 let currentImages = [];
@@ -152,7 +147,7 @@ document.addEventListener("rts:analysis-start", (event) => {
   scoresEmpty.hidden = true;
   scoresData.hidden = false;
   renderDescriptionAssessment(event.detail.descriptionAssessment);
-  renderSellerAssessment(event.detail.sellerAssessment);
+  renderReviewsAssessment(event.detail.reviewsAssessment);
   //scoresHeading.textContent = event.detail.title;
   scoresImages.replaceChildren(...currentImages.map(createScoreCard));
   updateScoreSummary();
@@ -215,12 +210,46 @@ function renderDescriptionAssessment(assessment) {
     `(${classification}).${rationale}`;
 }
 
-document.addEventListener(
-  "rts:description-assessment",
-  (event) => {
-    renderDescriptionAssessment(event.detail);
+document.addEventListener("rts:description-assessment", (event) => {
+  renderDescriptionAssessment(event.detail);
+});
+
+function renderReviewsAssessment(assessment) {
+  if (!reviewsAssessment || !assessment) return;
+  if (assessment.status === "pending") {
+    reviewsAssessment.textContent = assessment.message;
+    return;
   }
-);
+  if (assessment.status === "error") {
+    reviewsAssessment.textContent = `Reviews assessment failed: ${assessment.message}`;
+    return;
+  }
+  if (assessment.status !== "available") {
+    reviewsAssessment.textContent = assessment.message || "No review information was available to assess.";
+    return;
+  }
+  const result = assessment.result || {};
+  const textAssessment = result.review_text_ai_assessment || {};
+  const score = Number(textAssessment.ai_likeness_score);
+  if (!Number.isFinite(score)) {
+    reviewsAssessment.textContent = "Reviews assessment returned an invalid AI-likelihood score.";
+    return;
+  }
+  const classification = typeof textAssessment.classification === "string"
+    ? textAssessment.classification
+    : "assessment complete";
+  const rationale = typeof textAssessment.score_rationale === "string"
+    ? textAssessment.score_rationale
+    : typeof result.overall_rationale === "string"
+      ? result.overall_rationale
+      : "";
+  reviewsAssessment.textContent =
+    `Review-text AI-likelihood: ${score}/100 (${classification}). ${rationale}`.trim();
+}
+
+document.addEventListener("rts:reviews-assessment", (event) => {
+  renderReviewsAssessment(event.detail);
+});
 
 // Update image scores as processing finishes.
 document.addEventListener("rts:analysis-progress", (event) => {
@@ -243,6 +272,7 @@ document.addEventListener("rts:analysis", (event) => {
 
   scoresEmpty.hidden = true;
   scoresData.hidden = false;
+  renderReviewsAssessment(event.detail.reviewsAssessment);
   //scoresHeading.textContent = event.detail.title;
   scoresImages.replaceChildren(...currentImages.map(createScoreCard));
   updateScoreSummary();
@@ -444,12 +474,27 @@ function updateAuthMode() {
 function showSignedOutState() {
   authMode = "login";
   authForm.reset();
-  authSignOut.hidden = true;
+  authHeading.textContent = "Log in";
+  authIntro.hidden = false;
+  authForm.hidden = false;
+  authSignedIn.hidden = true;
+  authSignedInMessage.textContent = "";
   authSignOut.disabled = false;
   authSubmit.disabled = false;
   authSwitch.hidden = false;
 
   updateAuthMode();
+}
+
+function showSignedInState(email) {
+  authHeading.textContent = "Account";
+  authIntro.hidden = true;
+  authForm.hidden = true;
+  authSwitch.hidden = true;
+  authSignedIn.hidden = false;
+  authSignedInMessage.textContent = `You are signed in${email ? ` as ${email}` : ""}.`;
+  authFeedback.textContent = "";
+  setSettingsEnabled(true);
 }
 
 authSwitch.addEventListener("click", () => {

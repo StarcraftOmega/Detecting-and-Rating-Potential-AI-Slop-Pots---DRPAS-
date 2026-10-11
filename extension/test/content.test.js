@@ -192,6 +192,26 @@ test("keeps recommendation images out of scraped data but includes them for anal
   assert.equal(getAnalyzableImages(doc).length, 2);
 });
 
+test("associates feed images with the Etsy listing card they belong to", () => {
+  const image = makeImage({ url: "https://i.etsystatic.com/feed-item.jpg" });
+  image.closest = (selector) => selector.includes("/listing/")
+    ? { href: "https://www.etsy.com/listing/987654321/feed-item" }
+    : null;
+  const listing = getAnalyzableImages({
+    querySelectorAll: () => [image],
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(listing)), [{
+    url: image.src,
+    alt: "",
+    listingId: "987654321",
+  }]);
+});
+
+test("keeps a periodic scan scheduled for late-loaded Etsy images", () => {
+  assert.match(source, /window\.setInterval\(scan, RESCAN_INTERVAL_MS\)/);
+  assert.match(source, /const RESCAN_INTERVAL_MS = 5000/);
+});
+
 test("collects listing metadata and image alternatives", () => {
   const title = { tagName: "H1", textContent: "Sewing pattern" };
   const seller = { textContent: "Pattern shop" };

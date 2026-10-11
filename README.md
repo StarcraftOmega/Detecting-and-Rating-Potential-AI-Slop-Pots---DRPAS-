@@ -126,9 +126,13 @@ Routes are grouped by responsibility:
 - `GET /api/scores/:platform/:listingId` retrieves the latest stored score and
   its image analyses.
 - `POST /api/scores` stores a listing identity, overall signal scores, and
-  compact per-image scores. It accepts hashes and optional URLs, never image
-  bytes.
-- `POST /api/descriptions/evaluate` evaluates description text with AI and
+  compact per-image scores. Score reads and writes are intentionally available
+  without a signed-in extension session for the hackathon demo; they accept
+  hashes and optional URLs, never image bytes.
+- `GET /api/scores/images/:imageHash` and `POST /api/scores/images` read and
+  store hash-only image scores for feed, recommendation, and other page-wide
+  images that do not have listing or seller metadata.
+- `POST /api/evaluate-description` evaluates description text with AI and
   optional title, price, instructions, and attributes; authentication is
   required.
 - `GET /api/reports/:platform/:listingId` and `POST /api/reports` provide
