@@ -15,9 +15,9 @@
 <body>
   <div class="app-shell">
     <div class="app-card">
-      <aside class="sidebar" aria-label="Rate That Slop brand">
-        <button id="toggle-sidebar" class="sidebar-toggle" type="button" aria-label="Collapse sidebar"
-          aria-expanded="true" aria-controls="sidebar-content">←</button>
+      <button id="toggle-sidebar" class="sidebar-toggle" type="button" aria-label="Collapse sidebar"
+        aria-expanded="true" aria-controls="brand-sidebar">←</button>
+      <aside id="brand-sidebar" class="sidebar" aria-label="Rate That Slop brand">
         <div id="sidebar-content" class="sidebar-content">
           <div class="sidebar-blob" aria-hidden="true"></div>
           <div class="sidebar-blob-ring" aria-hidden="true"></div>
@@ -27,7 +27,7 @@
 
           <div class="brand-row">
             <div class="brand-mark">
-              <img src="assets/fox-mark.svg" alt="" width="44" height="44">
+              <img src="assets/fox-mark.svg" alt="" width="36" height="36">
             </div>
             <p class="brand-name">Rate That Slop</p>
           </div>
@@ -44,7 +44,7 @@
 
           <div class="privacy-callout">
             <span class="privacy-shield" aria-hidden="true">
-              <img src="assets/shield-privacy.svg" alt="" width="179.9" height="179.9">
+              <img src="assets/shield-privacy.svg" alt="" width="48" height="48">
             </span>
             <p>Private by design. Images never leave your browser.</p>
           </div>
@@ -54,12 +54,17 @@
       </aside>
 
       <main class="panel">
-        <nav class="popup-nav" aria-label="Popup navigation">
-          <button type="button" data-view="scores">Scores</button>
-          <button type="button" data-view="auth">Log In</button>
-          <button type="button" data-view="manual">Manual</button>
-          <button type="button" data-view="settings">Settings</button>
-        </nav>
+        <span class="panel-fox-badge" aria-hidden="true">
+          <img src="assets/fox-mark.svg" alt="" width="30" height="30">
+        </span>
+        <div class="main-controls">
+          <nav class="popup-nav" aria-label="Popup navigation">
+            <button type="button" data-view="scores">Scores</button>
+            <button type="button" data-view="auth">Log In</button>
+            <button type="button" data-view="manual">Manual</button>
+            <button type="button" data-view="settings">Settings</button>
+          </nav>
+        </div>
 
         <section id="scores-view" class="popup-view">
           <h2>Listing scores</h2>
@@ -123,7 +128,7 @@
           <button id="scan-page" class="scan-button" type="button">
             <span class="scan-button-left">
               <span class="scan-icon-wrap" aria-hidden="true">
-                <img src="assets/scan-icon.svg" alt="" width="20" height="20">
+                <img src="assets/fox-mark.svg" alt="" width="20" height="20">
               </span>
               <span class="scan-button-copy">
                 <span class="scan-button-title">Scan current listing</span>
