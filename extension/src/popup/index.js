@@ -121,11 +121,20 @@ function descriptionAssessmentState(listing, storedScore = null) {
 }
 
 async function requestSellerAssessment(listing) {
+  const seller = typeof listing?.seller === "string" ? listing.seller.trim() : "";
+  if (!seller) {
+    const assessment = lookupTrustedCreator({ serverChecked: false }, seller);
+    document.dispatchEvent(new CustomEvent("rts:seller-assessment", {
+      detail: assessment,
+    }));
+    return assessment;
+  }
+
   let response;
   try {
     response = await chrome.runtime.sendMessage({
       kind: "aid:get-trusted-creator",
-      username: listing.seller,
+      username: seller,
     });
   } catch (error) {
     response = { ok: false, error: error.message };
@@ -135,7 +144,7 @@ async function requestSellerAssessment(listing) {
       serverChecked: response.assessment?.checked === true,
       username: response.assessment?.username,
       trustedCreatorScore: response.assessment?.trustedCreatorScore,
-    }, listing.seller)
+    }, seller)
     : {
       status: "unavailable",
       message: response?.error || "Trusted creator status could not be checked.",
@@ -283,6 +292,7 @@ async function scanCurrentPage({ forceRefresh = false } = {}) {
     const images = Array.isArray(listing.analyzableImages) && listing.analyzableImages.length
       ? listing.analyzableImages.slice(0, 100)
       : evidenceImages.slice(0, 100);
+    const sellerAssessmentPromise = requestSellerAssessment(listing);
     const evidenceUrls = new Set(evidenceImages.map((image) => image.url));
     const storedScore = !forceRefresh && listing.listingId
       ? await chrome.runtime.sendMessage({
@@ -348,6 +358,7 @@ async function scanCurrentPage({ forceRefresh = false } = {}) {
     }
     const descriptionAssessment = await descriptionPromise;
     const reviewsAssessment = await reviewsPromise;
+    await sellerAssessmentPromise;
     const descriptionPercent = Number(descriptionAssessment?.result?.ai_likeness_score);
     const imageScores = scoreItems
       .filter((item) => evidenceUrls.has(item.url))
