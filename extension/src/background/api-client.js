@@ -98,6 +98,19 @@ export function createApiClient({
         requireAuth: false,
       });
     },
+    getImageScore(imageHash) {
+      return request(`/api/scores/images/${encodeURIComponent(imageHash)}`, {
+        allowNotFound: true,
+        requireAuth: false,
+      });
+    },
+    submitImageScore(payload) {
+      return request("/api/scores/images", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        requireAuth: false,
+      });
+    },
     evaluateDescription(description, listingDetails = {}) {
       return request("/api/evaluate-description", {
         method: "POST",

@@ -5,6 +5,9 @@ const MODEL_URL = chrome.runtime.getURL("src/background/w5810_best_fp16.onnx");
 const MANIFEST_URL = chrome.runtime.getURL("model_manifest.json");
 let sessionPromise = null;
 let manifestPromise = null;
+const hashedBlobCache = new Map();
+const HASHED_BLOB_CACHE_MAX_AGE_MS = 30_000;
+const HASHED_BLOB_CACHE_MAX_SIZE = 100;
 
 async function getManifest() {
   if (!manifestPromise) {
@@ -51,6 +54,24 @@ async function getBlob(imageUrl, imageData) {
   return response.blob();
 }
 
+function blobCacheKey(imageUrl, imageData) {
+  return imageUrl && !imageData ? imageUrl : "";
+}
+
+async function getCachedBlob(imageUrl, imageData) {
+  const key = blobCacheKey(imageUrl, imageData);
+  if (!key) return getBlob(imageUrl, imageData);
+  const cached = hashedBlobCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.blob;
+  if (cached) hashedBlobCache.delete(key);
+  const blob = await getBlob(imageUrl, imageData);
+  if (hashedBlobCache.size >= HASHED_BLOB_CACHE_MAX_SIZE) {
+    hashedBlobCache.delete(hashedBlobCache.keys().next().value);
+  }
+  hashedBlobCache.set(key, { blob, expiresAt: Date.now() + HASHED_BLOB_CACHE_MAX_AGE_MS });
+  return blob;
+}
+
 function toBase64Url(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -66,12 +87,12 @@ async function imageHash(blob) {
 }
 
 async function hashImage(imageUrl) {
-  return imageHash(await getBlob(imageUrl, ""));
+  return imageHash(await getCachedBlob(imageUrl, ""));
 }
 
 async function hashImageInputs(imageUrl, imageData) {
   if (!imageUrl && !imageData) throw new Error("imageUrl or imageData is required");
-  return imageHash(await getBlob(imageUrl, imageData));
+  return imageHash(await getCachedBlob(imageUrl, imageData));
 }
 
 async function decodeImage(blob) {
@@ -139,7 +160,7 @@ async function infer(imageUrl, imageData) {
   const [session, manifest, blob] = await Promise.all([
     getSession(),
     getManifest(),
-    getBlob(imageUrl, imageData),
+    getCachedBlob(imageUrl, imageData),
   ]);
   const imageId = await imageHash(blob);
   const bitmap = await decodeImage(blob);

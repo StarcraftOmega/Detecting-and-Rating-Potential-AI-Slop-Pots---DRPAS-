@@ -115,6 +115,19 @@ ON public.score_snapshots(pattern_id, calculated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_image_analyses_snapshot
 ON public.image_analyses(snapshot_id);
 
+-- Hash-only image results used by feed/recommendation images that are not
+-- associated with a listing score.
+CREATE TABLE IF NOT EXISTS public.standalone_image_scores (
+    image_hash TEXT PRIMARY KEY,
+    image_url TEXT,
+    ai_score DOUBLE PRECISION NOT NULL CHECK (ai_score >= 0 AND ai_score <= 1),
+    model_version TEXT,
+    analyzed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_standalone_image_scores_analyzed_at
+ON public.standalone_image_scores(analyzed_at DESC);
+
 
 -- 7. ROW LEVEL SECURITY
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -130,11 +143,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.reports TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.score_snapshots TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.image_analyses TO service_role;
 GRANT USAGE ON SCHEMA public TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.standalone_image_scores TO service_role;
 
 -- Score reads and writes are intentionally public for the hackathon demo.
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.patterns TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.score_snapshots TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.image_analyses TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.standalone_image_scores TO anon, authenticated;
 
 DROP POLICY IF EXISTS public_score_pattern_access ON public.patterns;
 CREATE POLICY public_score_pattern_access ON public.patterns
@@ -150,6 +165,13 @@ CREATE POLICY public_score_snapshot_access ON public.score_snapshots
 
 DROP POLICY IF EXISTS public_score_image_access ON public.image_analyses;
 CREATE POLICY public_score_image_access ON public.image_analyses
+    FOR ALL TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
+
+ALTER TABLE public.standalone_image_scores ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS public_standalone_image_score_access ON public.standalone_image_scores;
+CREATE POLICY public_standalone_image_score_access ON public.standalone_image_scores
     FOR ALL TO anon, authenticated
     USING (true)
     WITH CHECK (true);

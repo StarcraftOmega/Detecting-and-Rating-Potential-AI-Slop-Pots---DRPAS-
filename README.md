@@ -135,6 +135,9 @@ Routes are grouped by responsibility:
   compact per-image scores. Score reads and writes are intentionally available
   without a signed-in extension session for the hackathon demo; they accept
   hashes and optional URLs, never image bytes.
+- `GET /api/scores/images/:imageHash` and `POST /api/scores/images` read and
+  store hash-only image scores for feed, recommendation, and other page-wide
+  images that do not have listing or seller metadata.
 - `POST /api/evaluate-description` evaluates description text with AI and
   optional title, price, instructions, and attributes; authentication is
   required. `/api/descriptions/evaluate` remains available as a compatible
