@@ -11,6 +11,7 @@ const manualResultTime = document.querySelector("#result-time");
 const analyzeButton = form.querySelector("button");
 const settingInputs = [...document.querySelectorAll("[data-setting]")];
 const DESCRIPTION_CACHE_PREFIX = "description-assessment:";
+const REVIEWS_CACHE_PREFIX = "reviews-assessment:";
 
 async function loadSettings() {
   const response = await chrome.runtime.sendMessage({ kind: "aid:get-settings" });
@@ -109,6 +110,65 @@ function descriptionAssessmentState(listing, storedScore = null) {
 
 function isAuthenticationRequiredError(error) {
   return /sign-in is required for server features/i.test(error?.message || "");
+}
+
+function reviewsFingerprint(reviewsAndImages) {
+  return JSON.stringify(reviewsAndImages);
+}
+
+function reviewsAssessmentState(reviewsAndImages) {
+  const reviewCount = Array.isArray(reviewsAndImages?.reviews) ? reviewsAndImages.reviews.length : 0;
+  const photoCount = Array.isArray(reviewsAndImages?.reviewImages) ? reviewsAndImages.reviewImages.length : 0;
+  const ratings = typeof reviewsAndImages?.ratings === "string" ? reviewsAndImages.ratings.trim() : "";
+  if (!reviewCount && !photoCount && !ratings) {
+    return { status: "unavailable", message: "No review information was available to assess." };
+  }
+  return { status: "pending", message: "Reviews submitted. Waiting for AI review…" };
+}
+
+async function requestReviewsAssessment(listing) {
+  const reviewsAndImages = listing.reviewsAndImages;
+  const initial = reviewsAssessmentState(reviewsAndImages);
+  if (initial.status !== "pending") {
+    document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: initial }));
+    return initial;
+  }
+  const cacheKey = `${REVIEWS_CACHE_PREFIX}${listing.listingId || "unknown"}`;
+  const fingerprint = reviewsFingerprint(reviewsAndImages);
+  const cached = await chrome.storage.local.get(cacheKey);
+  if (cached[cacheKey]?.fingerprint === fingerprint) {
+    const assessment = { status: "available", result: cached[cacheKey].result };
+    document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: assessment }));
+    return assessment;
+  }
+  document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: initial }));
+  try {
+    const response = await chrome.runtime.sendMessage({
+      kind: "aid:evaluate-reviews",
+      reviewsAndImages,
+    });
+    if (!response?.ok) throw new Error(response?.error || "Reviews assessment failed");
+    const score = Number(response.result?.review_text_ai_assessment?.ai_likeness_score);
+    if (!Number.isInteger(score) || score < 0 || score > 100) {
+      throw new Error("AI returned an invalid reviews assessment");
+    }
+    const assessment = { status: "available", result: response.result };
+    await chrome.storage.local.set({
+      [cacheKey]: { fingerprint, result: response.result, cachedAt: new Date().toISOString() },
+    });
+    document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: assessment }));
+    return assessment;
+  } catch (error) {
+    const message = isAuthenticationRequiredError(error)
+      ? "Not available until login."
+      : error.message || "Reviews assessment failed";
+    const assessment = isAuthenticationRequiredError(error)
+      ? { status: "unavailable", message }
+      : { status: "error", message };
+    document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: assessment }));
+    if (assessment.status === "error") console.error("Reviews assessment failed:", error);
+    return assessment;
+  }
 }
 
 async function requestDescriptionAssessment(listing, storedScore = null) {
@@ -210,9 +270,11 @@ async function scanCurrentPage({ forceRefresh = false } = {}) {
         images: scoreItems,
         listingScore,
         descriptionAssessment: descriptionAssessmentState(listing),
+        reviewsAssessment: reviewsAssessmentState(listing.reviewsAndImages),
       }
     }));
     const descriptionPromise = requestDescriptionAssessment(listing, listingScore);
+    const reviewsPromise = requestReviewsAssessment(listing);
 
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
@@ -243,6 +305,7 @@ async function scanCurrentPage({ forceRefresh = false } = {}) {
       }));
     }
     const descriptionAssessment = await descriptionPromise;
+    const reviewsAssessment = await reviewsPromise;
     const descriptionPercent = Number(descriptionAssessment?.result?.ai_likeness_score);
     const imageScores = scoreItems
       .filter((item) => evidenceUrls.has(item.url))
@@ -296,7 +359,7 @@ async function scanCurrentPage({ forceRefresh = false } = {}) {
     }
     document.dispatchEvent(new CustomEvent("rts:analysis", {
       detail: { type: "listing", title: listing.title || "Current Etsy listing", images: scoreItems, listingScore,
-        descriptionAssessment }
+        descriptionAssessment, reviewsAssessment }
     }));
   } catch (error) {
     document.dispatchEvent(new CustomEvent("rts:scan-unavailable", {

@@ -8,10 +8,10 @@ const scoresData = $("#scores-data");
 const scoresImages = $("#scores-images");
 const scoresHeading = $("#scores-heading");
 const descriptionAssessment = $("#scores-description-assessment");
+const reviewsAssessment = $("#scores-reviews-assessment");
 //const scoresSummary = $("#scores-summary");
 
 const retryButton = $("#scores-retry");
-const reportLoginButton = $("#scores-report-login");
 retryButton.addEventListener("click", () => {
   $("#scores-empty-message").textContent = "Scanning this listing…";
   document.dispatchEvent(new Event("rts:scan-requested"));
@@ -22,7 +22,6 @@ document.addEventListener("rts:scan-unavailable", (event) => {
     scoresEmpty.hidden = false;
   }
 });
-reportLoginButton.addEventListener("click", () => showView("auth"));
 
 // Display Etsy thumbnails immediately, then update each score as ONNX finishes.
 let currentImages = [];
@@ -95,6 +94,7 @@ document.addEventListener("rts:analysis-start", (event) => {
   scoresEmpty.hidden = true;
   scoresData.hidden = false;
   renderDescriptionAssessment(event.detail.descriptionAssessment);
+  renderReviewsAssessment(event.detail.reviewsAssessment);
   //scoresHeading.textContent = event.detail.title;
   renderListingImages();
   updateScoreSummary();
@@ -132,6 +132,43 @@ document.addEventListener("rts:description-assessment", (event) => {
   renderDescriptionAssessment(event.detail);
 });
 
+function renderReviewsAssessment(assessment) {
+  if (!reviewsAssessment || !assessment) return;
+  if (assessment.status === "pending") {
+    reviewsAssessment.textContent = assessment.message;
+    return;
+  }
+  if (assessment.status === "error") {
+    reviewsAssessment.textContent = `Reviews assessment failed: ${assessment.message}`;
+    return;
+  }
+  if (assessment.status !== "available") {
+    reviewsAssessment.textContent = assessment.message || "No review information was available to assess.";
+    return;
+  }
+  const result = assessment.result || {};
+  const textAssessment = result.review_text_ai_assessment || {};
+  const score = Number(textAssessment.ai_likeness_score);
+  if (!Number.isFinite(score)) {
+    reviewsAssessment.textContent = "Reviews assessment returned an invalid AI-likelihood score.";
+    return;
+  }
+  const classification = typeof textAssessment.classification === "string"
+    ? textAssessment.classification
+    : "assessment complete";
+  const rationale = typeof textAssessment.score_rationale === "string"
+    ? textAssessment.score_rationale
+    : typeof result.overall_rationale === "string"
+      ? result.overall_rationale
+      : "";
+  reviewsAssessment.textContent =
+    `Review-text AI-likelihood: ${score}/100 (${classification}). ${rationale}`.trim();
+}
+
+document.addEventListener("rts:reviews-assessment", (event) => {
+  renderReviewsAssessment(event.detail);
+});
+
 document.addEventListener("rts:analysis-progress", (event) => {
   const { index, item } = event.detail;
   currentImages[index] = item;
@@ -145,6 +182,7 @@ document.addEventListener("rts:analysis", (event) => {
   currentListingScore = event.detail.listingScore || null;
   scoresEmpty.hidden = true;
   scoresData.hidden = false;
+  renderReviewsAssessment(event.detail.reviewsAssessment);
   //scoresHeading.textContent = event.detail.title;
   renderListingImages();
   updateScoreSummary();
