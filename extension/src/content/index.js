@@ -107,7 +107,7 @@ function getListingId(doc = document, location = window.location) {
     doc.querySelector("[data-product-id]")?.getAttribute("data-product-id") || "";
 }
 
-function collectPageData(doc = document, location = window.location) {
+function collectPageData(doc = document, location = window.location, options = {}) {
   if (!isEtsyPage(location)) return { ok: false, error: "This is not an Etsy page." };
   return {
     ok: true,
@@ -132,6 +132,7 @@ function collectPageData(doc = document, location = window.location) {
       listingId: getListingId(doc, location),
       pageUrl: location.href,
       ...scrapeProductInformation(doc),
+      reviewsAndImages: scrapeReviewsAndImages(doc, options.includeEtsyReviews !== false),
     },
   };
 }
@@ -376,8 +377,12 @@ async function analyzePageImages(data) {
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.kind === "aid:collect-page") {
-      sendResponse(collectPageData());
-      return false;
+      sendRuntimeMessage({ kind: "aid:get-settings" }).then((settingsResponse) => {
+        sendResponse(collectPageData(document, window.location, {
+          includeEtsyReviews: settingsResponse?.settings?.etsyReviewsEnabled !== false,
+        }));
+      }).catch(() => sendResponse(collectPageData()));
+      return true;
     }
     if (message?.kind === "aid:show-result" &&
         typeof message.imageUrl === "string" &&
