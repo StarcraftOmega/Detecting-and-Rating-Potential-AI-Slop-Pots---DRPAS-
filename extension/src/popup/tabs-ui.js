@@ -327,7 +327,6 @@ function showSignedOutState() {
   authForm.hidden = false;
   authSignedIn.hidden = true;
   authSignedInMessage.textContent = "";
-  reportLoginButton.hidden = false;
   authSignOut.disabled = false;
   authSubmit.disabled = false;
   authSwitch.hidden = false;
@@ -342,7 +341,6 @@ function showSignedInState(email) {
   authSignedIn.hidden = false;
   authSignedInMessage.textContent = `You are signed in${email ? ` as ${email}` : ""}.`;
   authFeedback.textContent = "";
-  reportLoginButton.hidden = true;
   setSettingsEnabled(true);
 }
 
