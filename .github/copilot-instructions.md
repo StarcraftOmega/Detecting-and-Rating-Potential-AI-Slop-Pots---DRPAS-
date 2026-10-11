@@ -50,6 +50,13 @@ default.
   explicit failure or signed-out states. A successful login must retry the
   current listing scan so a prior signed-out assessment can be replaced with
   the authenticated result.
+- Every assessment event rendered by `tabs-ui.js` must have a matching DOM
+  element binding initialized before the listener is registered. Every
+  assessment request declared in `extension/src/popup/index.js`, including
+  seller-scoped trusted-creator lookup, must be invoked from the listing scan
+  lifecycle and must dispatch a terminal available, unknown, unavailable, or
+  error state; a placeholder such as "Checking…" must never remain solely
+  because a request was defined but not called.
 - Keep raw image detection separate from listing rating. Detection estimates
   AI likelihood; rating combines image evidence with carefully bounded listing
   signals.
@@ -266,7 +273,8 @@ default.
   WebGPU execution-provider path is implemented.
 - Add tests for preprocessing, calibration, invalid images, Etsy DOM
   extraction, deduplication, dynamic/lazy-loaded listings, repeated image
-  badge routing, popup states, and rating boundaries.
+  badge routing, popup assessment request/event completion, popup states, and
+  rating boundaries.
 - Do not claim the extension is complete while the model, offscreen runtime,
   popup, or Etsy content script is still a placeholder.
 
