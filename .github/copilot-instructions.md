@@ -67,6 +67,15 @@ default.
   are account-gated features and must use authenticated API requests, except
   for the temporary public score-sync path documented below. The temporary
   `/api/scores` path permits unauthenticated score reads and writes only.
+- Trusted-creator status is seller-scoped, never listing-scoped. Extract the
+  current seller name from `[data-seller-cred-anchor]` and query the dedicated
+  `/api/scores/trusted-creator/:username` route independently of the current
+  listing ID. Compare the seller name case-insensitively with the existing
+  quoted `"Username"` column in `score_snapshots`; do not change how that
+  database value is stored. Treat only `trusted_creator_score === 1` as
+  trusted. A matching `0`, `NULL`, missing row, or failed/unavailable server
+  check must not be presented as trusted, and a failed check must remain
+  distinct from a confirmed unknown seller.
 - Prefer a fresh server-stored listing rating and matching per-image result
   over local cached or ONNX results, including for signed-out users through
   the temporary public score-read path. A server record with a missing or
@@ -407,6 +416,11 @@ production security or privacy design.
   hackathon; description evaluation is under `/api/evaluate-description`
   (with the `/api/descriptions` route retained as a compatible route group),
   and reports remain under `/api/reports`.
+  The seller-only trusted-creator lookup is part of the temporary public score
+  read path. It must search all matching seller rows and select a stored trust
+  value of exactly `1` when any matching row has one; do not rely on a single
+  listing snapshot or database null ordering. Preserve the response's checked
+  state and explicit `null` value when no usable trust flag exists.
   Description evaluation remains authenticated and returns the structured AI
   assessment for the popup, including the evaluator's 0-100 value, a
   normalized `descriptionScore` in the 0-1 interval, and a cleaned
@@ -425,6 +439,12 @@ production security or privacy design.
   provide and apply an explicit Supabase SQL migration such as
   `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, then verify the live columns
   before diagnosing missing data as a client-cache issue.
+- When changing trusted-creator lookup routes, redeploy the backend before
+  diagnosing extension behavior. Verify the deployed
+  `/api/scores/trusted-creator/<seller-name>` response directly and test at
+  least two listings from the same seller; a `401`, `404`, listing-only
+  response, or a response missing `"Username"`/`trusted_creator_score`
+  indicates that the deployed service is stale or misconfigured.
 - Before diagnosing score/report writes, run the backend locally with the
   ignored `backend/.env` and perform read-only checks against `/api/health`,
   `/api/test-db`, and each application table. Then perform one controlled

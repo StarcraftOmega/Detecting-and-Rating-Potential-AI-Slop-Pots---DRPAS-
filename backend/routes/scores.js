@@ -13,16 +13,19 @@ router.get("/trusted-creator/:username", async (req, res) => {
             .from("score_snapshots")
             .select('\"Username\", trusted_creator_score')
             .ilike("Username", username)
-            .order("trusted_creator_score", { ascending: false, nullsFirst: false })
             .order("calculated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .limit(100);
         if (error) throw error;
+        const matchingRows = Array.isArray(data) ? data : [];
+        const trustedRow = matchingRows.find((row) =>
+            Number(row?.trusted_creator_score) === 1);
+        const selectedRow = trustedRow || matchingRows[0] || null;
         res.json({
             checked: true,
-            username: data?.Username || username,
-            trustedCreatorScore: typeof data?.trusted_creator_score === "number"
-                ? data.trusted_creator_score : null,
+            username: selectedRow?.Username || username,
+            trustedCreatorScore: trustedRow ? 1 :
+                (typeof selectedRow?.trusted_creator_score === "number"
+                    ? selectedRow.trusted_creator_score : null),
         });
     } catch (error) {
         console.error("Trusted creator lookup failed:", error.message);

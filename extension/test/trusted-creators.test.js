@@ -53,6 +53,17 @@ test("matches database-shaped score fields", () => {
   );
 });
 
+test("accepts the seller lookup result when the stored flag is numeric", () => {
+  assert.deepEqual(
+    lookupTrustedCreator({
+      serverChecked: true,
+      username: "SydGrahamPatterns",
+      trustedCreatorScore: 1,
+    }, "SydGrahamPatterns"),
+    { status: "trusted", creator: "SydGrahamPatterns" },
+  );
+});
+
 test("does not call an unchecked seller unknown", () => {
   const assessment = lookupTrustedCreator({ serverChecked: false }, "SoftpawVintage");
   assert.deepEqual(assessment, {
