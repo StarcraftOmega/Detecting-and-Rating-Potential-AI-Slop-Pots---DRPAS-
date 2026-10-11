@@ -91,6 +91,19 @@ test("uses Etsy listing selectors for seller and price", () => {
   assert.equal(listing.listing.price, "$25.00");
 });
 
+test("uses the current listing URL before stale DOM listing identifiers", () => {
+  const listing = collectPageData({
+    querySelectorAll: () => [],
+    querySelector: (selector) => selector === "[data-listing-id]"
+      ? { getAttribute: () => "old-listing" } : null,
+  }, {
+    hostname: "etsy.com",
+    href: "https://etsy.com/listing/4383107558/current",
+    pathname: "/listing/4383107558/current",
+  });
+  assert.equal(listing.listing.listingId, "4383107558");
+});
+
 test("scopes listing images and separates customer review photos", () => {
   const listingImage = makeImage({ url: "https://i.etsystatic.com/listing.jpg" });
   const reviewImage = makeImage({ url: "https://i.etsystatic.com/iap/review.jpg" });

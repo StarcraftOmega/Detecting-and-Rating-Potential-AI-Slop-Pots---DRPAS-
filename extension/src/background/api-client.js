@@ -2,6 +2,7 @@ import { getAccessToken } from "./auth.js";
 import { writeDiagnostic } from "./diagnostics.js";
 
 const SERVER_URL_KEY = "serverBaseUrl";
+const DEFAULT_SERVER_URL = "https://rate-my-slop-xzld5.ondigitalocean.app";
 const DEFAULT_TIMEOUT_MS = 8000;
 
 function validateObject(value, name) {
@@ -20,10 +21,10 @@ export function createApiClient({
   async function configuredBaseUrl() {
     if (baseUrl) return baseUrl.replace(/\/+$/, "");
     const stored = await chrome.storage.local.get(SERVER_URL_KEY);
-    if (typeof stored[SERVER_URL_KEY] !== "string" || !stored[SERVER_URL_KEY]) {
-      throw new Error("server URL is not configured");
-    }
-    return stored[SERVER_URL_KEY].replace(/\/+$/, "");
+    const configured = typeof stored[SERVER_URL_KEY] === "string"
+      ? stored[SERVER_URL_KEY].trim()
+      : "";
+    return (configured || DEFAULT_SERVER_URL).replace(/\/+$/, "");
   }
 
   async function request(path, options = {}) {
@@ -77,9 +78,16 @@ export function createApiClient({
   }
 
   return {
-    getListingScore(platform, listingId) {
-      return request(`/api/scores/${encodeURIComponent(platform)}/${encodeURIComponent(listingId)}`, {
+    getListingScore(platform, listingId, username = "") {
+      const query = typeof username === "string" && username.trim()
+        ? `?username=${encodeURIComponent(username.trim())}` : "";
+      return request(`/api/scores/${encodeURIComponent(platform)}/${encodeURIComponent(listingId)}${query}`, {
         allowNotFound: true,
+        requireAuth: false,
+      });
+    },
+    getTrustedCreator(username) {
+      return request(`/api/scores/trusted-creator/${encodeURIComponent(username)}`, {
         requireAuth: false,
       });
     },

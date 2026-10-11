@@ -15,6 +15,11 @@ export function isFresh(calculatedAt, maxAgeMs = DEFAULT_MAX_AGE_MS, now = Date.
 export function normalizeServerScore(response) {
   const score = response?.score;
   if (!score || typeof score !== "object" || !isFresh(score.calculated_at)) return null;
+  const descriptionScore = typeof score.description_score === "number" &&
+    Number.isFinite(score.description_score) &&
+    score.description_score >= 0 && score.description_score <= 1
+    ? score.description_score
+    : null;
   const images = Array.isArray(score.images) ? score.images.filter((image) =>
     typeof image?.image_hash === "string" &&
     Number.isFinite(Number(image.ai_score)) &&
@@ -22,10 +27,12 @@ export function normalizeServerScore(response) {
   ) : [];
   return {
     overall: Number.isFinite(Number(score.aggregate_score)) ? Number(score.aggregate_score) : null,
-    descriptionScore: Number.isFinite(Number(score.description_score))
-      ? Number(score.description_score) : null,
+    descriptionScore,
     descriptionRationale: typeof score.description_rationale === "string"
       ? score.description_rationale : "",
+    trustedCreatorScore: typeof score.trusted_creator_score === "number"
+      ? score.trusted_creator_score : null,
+    username: typeof score.Username === "string" ? score.Username : "",
     calculatedAt: score.calculated_at,
     modelVersion: typeof score.model_version === "string" ? score.model_version : "server",
     images: images.map((image) => ({
