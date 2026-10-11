@@ -7,6 +7,7 @@ const scoresEmpty = $("#scores-empty");
 const scoresData = $("#scores-data");
 const scoresImages = $("#scores-images");
 const scoresHeading = $("#scores-heading");
+const sellerAssessment = $("#scores-seller-assessment");
 const descriptionAssessment = $("#scores-description-assessment");
 const reviewsAssessment = $("#scores-reviews-assessment");
 //const scoresSummary = $("#scores-summary");
