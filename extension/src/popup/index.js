@@ -59,6 +59,55 @@ async function showResultOnPage(imageUrl, result) {
 
 let scanInProgress = false;
 
+function descriptionAssessmentState(listing) {
+  const description = typeof listing.description === "string" ? listing.description.trim() : "";
+  if (!description) return { status: "unavailable", message: "No listing description was available to review." };
+  return { status: "pending", message: "Description submitted. Waiting for AI review…" };
+}
+
+function isAuthenticationRequiredError(error) {
+  return /sign-in is required for server features/i.test(error?.message || "");
+}
+
+async function requestDescriptionAssessment(listing) {
+  const description = typeof listing.description === "string" ? listing.description.trim() : "";
+  if (!description) return;
+  document.dispatchEvent(new CustomEvent("rts:description-assessment", {
+    detail: descriptionAssessmentState(listing),
+  }));
+  try {
+    const response = await chrome.runtime.sendMessage({
+      kind: "aid:evaluate-description",
+      description,
+      listingDetails: {
+        title: listing.title || "",
+        price: listing.price || "",
+        instructions: listing.instructions || "",
+        attributes: listing.attributes || "",
+      },
+    });
+    if (!response?.ok) throw new Error(response?.error || "Description review failed");
+    const score = Number(response.result?.ai_likeness_score);
+    if (!Number.isFinite(score) || score < 0 || score > 100) {
+      throw new Error("AI returned an invalid description assessment");
+    }
+    document.dispatchEvent(new CustomEvent("rts:description-assessment", {
+      detail: { status: "available", result: response.result },
+    }));
+  } catch (error) {
+    if (isAuthenticationRequiredError(error)) {
+      document.dispatchEvent(new CustomEvent("rts:description-assessment", {
+        detail: { status: "unavailable", message: "Not available until login." },
+      }));
+      return;
+    }
+    document.dispatchEvent(new CustomEvent("rts:description-assessment", {
+      detail: { status: "error", message: error.message || "Description review failed" },
+    }));
+    console.error("Description assessment failed:", error);
+  }
+}
+
 async function scanCurrentPage() {
   // Avoid running two expensive listing scans at the same time.
   if (scanInProgress) return;
@@ -89,8 +138,14 @@ async function scanCurrentPage() {
       status: "Analyzing…",
     }));
     document.dispatchEvent(new CustomEvent("rts:analysis-start", {
-      detail: { title: listing.title || "Current Etsy listing", images: scoreItems, listingScore }
+      detail: {
+        title: listing.title || "Current Etsy listing",
+        images: scoreItems,
+        listingScore,
+        descriptionAssessment: descriptionAssessmentState(listing),
+      }
     }));
+    void requestDescriptionAssessment(listing);
 
     for (let i = 0; i < images.length; i++) {
       const image = images[i];

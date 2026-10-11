@@ -123,6 +123,7 @@ function collectPageData(doc = document, location = window.location) {
       ]).replace(/^price:\s*/i, ""),
       listingId: getListingId(doc, location),
       pageUrl: location.href,
+      ...scrapeProductInformation(doc),
     },
   };
 }

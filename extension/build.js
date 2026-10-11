@@ -7,6 +7,10 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  SUPABASE_URL as defaultSupabaseUrl,
+  SUPABASE_PUBLISHABLE_KEY as defaultPublishableKey,
+} from "./src/background/build-config.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = join(here, "node_modules", "onnxruntime-web", "dist");
@@ -15,12 +19,16 @@ const generatedConfig = join(here, "src", "background", "build-config.json");
 const backendEnv = join(here, "..", "backend", ".env");
 
 function readPublicSupabaseConfig() {
-  if (!existsSync(backendEnv)) return {};
-  const values = {};
+  const values = {
+    SUPABASE_URL: defaultSupabaseUrl,
+    SUPABASE_PUBLISHABLE_KEY: defaultPublishableKey,
+  };
+  if (!existsSync(backendEnv)) return values;
   for (const line of readFileSync(backendEnv, "utf8").split(/\r?\n/)) {
     const match = line.match(/^\s*(SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY)\s*=\s*(.*?)\s*$/);
     if (!match) continue;
-    values[match[1]] = match[2].replace(/^(["'])(.*)\1$/, "$2");
+    const value = match[2].replace(/^(["'])(.*)\1$/, "$2");
+    if (value) values[match[1]] = value;
   }
   return values;
 }
@@ -30,7 +38,7 @@ writeFileSync(generatedConfig, JSON.stringify({
   SUPABASE_URL: publicConfig.SUPABASE_URL || "",
   SUPABASE_PUBLISHABLE_KEY: publicConfig.SUPABASE_PUBLISHABLE_KEY || "",
 }, null, 2) + "\n");
-console.log(`generated Supabase extension config from ${existsSync(backendEnv) ? "backend/.env" : "empty defaults"}`);
+console.log(`generated Supabase extension config from ${existsSync(backendEnv) ? "backend/.env and bundled public defaults" : "bundled public defaults"}`);
 
 // Only the files Sieve actually loads. offscreen.html statically loads the
 // webgpu (jsep) bundle, which lazily requests exactly its matching wasm pair.

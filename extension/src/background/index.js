@@ -360,7 +360,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!isSettingEnabled(settings, "descriptionAiEnabled")) {
         throw new Error("AI description testing is disabled in settings");
       }
-      return apiClient.evaluateDescription(message.description);
+      return apiClient.evaluateDescription(message.description, message.listingDetails || {});
     })
       .then((result) => sendResponse({ ok: true, result }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));

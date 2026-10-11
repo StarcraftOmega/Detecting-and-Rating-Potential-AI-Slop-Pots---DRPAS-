@@ -1,22 +1,29 @@
+import {
+  SUPABASE_URL as defaultSupabaseUrl,
+  SUPABASE_PUBLISHABLE_KEY as defaultPublishableKey,
+} from "./build-config.js";
+
 const SESSION_KEY = "serverSession";
 const AUTH_TIMEOUT_MS = 12000;
 
 async function authConfig() {
-  let builtConfig;
-  try {
-    const response = await fetch(chrome.runtime.getURL("src/background/build-config.json"));
-    if (!response.ok) throw new Error(`config request failed with HTTP ${response.status}`);
+  const response = await fetch(chrome.runtime.getURL("src/background/build-config.json"));
+  let builtConfig = {};
+  if (response.ok) {
     builtConfig = await response.json();
-  } catch {
-    throw new Error("Generated Supabase config is missing. Run npm --prefix extension run build, then reload the extension.");
+  } else if (response.status !== 404) {
+    throw new Error(`Generated Supabase config request failed with HTTP ${response.status}.`);
   }
-  const supabaseUrl = builtConfig.SUPABASE_URL;
-  const publishableKey = builtConfig.SUPABASE_PUBLISHABLE_KEY;
+  const supabaseUrl = typeof builtConfig.SUPABASE_URL === "string" && builtConfig.SUPABASE_URL.trim()
+    ? builtConfig.SUPABASE_URL : defaultSupabaseUrl;
+  const publishableKey = typeof builtConfig.SUPABASE_PUBLISHABLE_KEY === "string" &&
+    builtConfig.SUPABASE_PUBLISHABLE_KEY.trim()
+    ? builtConfig.SUPABASE_PUBLISHABLE_KEY : defaultPublishableKey;
   if (typeof supabaseUrl !== "string" || !/^https:\/\/[\w.-]+\.supabase\.co\/?$/i.test(supabaseUrl)) {
-    throw new Error("Supabase URL is missing from generated config. Run npm --prefix extension run build, then reload the extension.");
+    throw new Error("Supabase URL is missing from the bundled public config.");
   }
   if (typeof publishableKey !== "string" || !publishableKey.trim()) {
-    throw new Error("Supabase publishable key is missing from generated config. Check backend/.env, rebuild, and reload the extension.");
+    throw new Error("Supabase publishable key is missing from the bundled public config.");
   }
   return { supabaseUrl: supabaseUrl.replace(/\/+$/, ""), publishableKey };
 }

@@ -21,9 +21,11 @@ npm run build
 
 The extension build reads only `SUPABASE_URL` and
 `SUPABASE_PUBLISHABLE_KEY` from `backend/.env` and writes them to a
-gitignored generated module. `SUPABASE_KEY` is never read by the extension
-build. The popup asks only for the API server URL; for a hosted HTTPS API,
-Chrome requests permission for that origin when you sign in.
+gitignored generated config, using the bundled public project config when
+either value is absent. The extension also uses that bundled config if the
+generated file is missing in a packaged copy. `SUPABASE_KEY` is never read by
+the extension build. The popup asks only for the API server URL; for a hosted
+HTTPS API, Chrome requests permission for that origin when you sign in.
 
 The tests cover Etsy host validation, image deduplication/filtering, and
 listing metadata extraction. The build vendors the local ONNX Runtime files
@@ -38,7 +40,12 @@ needed by the offscreen inference document.
    page loads.
 3. Open the RateThatSlop popup and choose **Scan current Etsy page**.
 4. The popup lists each suitable product image it found and its local AI
-   likelihood. Direct image URLs can still be analyzed individually.
+   likelihood. When a description is available, the Scores view shows that
+   the description was submitted while the AI review is in progress, then
+   shows the returned AI-writing likelihood and classification. If the
+   server or model is unavailable, the view reports that failure instead of
+   displaying a misleading score. Direct image URLs can still be analyzed
+   individually.
 
 The scraper deduplicates image URLs, ignores common avatars/icons/logos, caps
 scans at 100 images, and extracts title, seller, price, and page URL when the
