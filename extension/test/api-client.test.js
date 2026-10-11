@@ -104,3 +104,34 @@ test("review evaluation sends the scraper payload without image bytes", async ()
 	assert.equal(requestOptions.headers.Authorization, "Bearer session-token");
 	assert.equal(requestOptions.body.includes("imageData"), false);
 });
+
+test("hash-only image scores use the public score endpoints without image bytes", async () => {
+	const requests = [];
+	const client = createApiClient({
+	  baseUrl: "https://api.example.test",
+	  getToken: async () => null,
+	  fetchImpl: async (url, options) => {
+	    requests.push({ url, options });
+	    return {
+	      ok: true,
+	      json: async () => ({ image: {
+	        image_hash: "hash-123",
+	        ai_score: 0.8,
+	        model_version: "w5810",
+	      } }),
+	    };
+	  },
+	});
+
+	await client.getImageScore("hash-123");
+	await client.submitImageScore({
+	  imageHash: "hash-123",
+	  aiScore: 0.8,
+	  modelVersion: "w5810",
+	});
+
+	assert.equal(requests[0].url, "https://api.example.test/api/scores/images/hash-123");
+	assert.equal(requests[1].url, "https://api.example.test/api/scores/images");
+	assert.equal(JSON.parse(requests[1].options.body).imageHash, "hash-123");
+	assert.equal(requests[1].options.body.includes("imageData"), false);
+});

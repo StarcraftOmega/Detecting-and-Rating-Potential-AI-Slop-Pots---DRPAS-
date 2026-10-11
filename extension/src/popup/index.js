@@ -173,7 +173,7 @@ function reviewsAssessmentState(reviewsAndImages) {
   return { status: "pending", message: "Reviews submitted. Waiting for AI review…" };
 }
 
-async function requestReviewsAssessment(listing) {
+async function requestReviewsAssessment(listing, { forceRefresh = false } = {}) {
   const reviewsAndImages = listing.reviewsAndImages;
   const initial = reviewsAssessmentState(reviewsAndImages);
   if (initial.status !== "pending") {
@@ -183,7 +183,7 @@ async function requestReviewsAssessment(listing) {
   const cacheKey = `${REVIEWS_CACHE_PREFIX}${listing.listingId || "unknown"}`;
   const fingerprint = reviewsFingerprint(reviewsAndImages);
   const cached = await chrome.storage.local.get(cacheKey);
-  if (cached[cacheKey]?.fingerprint === fingerprint) {
+  if (!forceRefresh && cached[cacheKey]?.fingerprint === fingerprint) {
     const assessment = { status: "available", result: cached[cacheKey].result };
     document.dispatchEvent(new CustomEvent("rts:reviews-assessment", { detail: assessment }));
     return assessment;
@@ -218,10 +218,10 @@ async function requestReviewsAssessment(listing) {
   }
 }
 
-async function requestDescriptionAssessment(listing, storedScore = null) {
+async function requestDescriptionAssessment(listing, storedScore = null, { forceRefresh = false } = {}) {
   const description = typeof listing.description === "string" ? listing.description.trim() : "";
   if (!description) return;
-  if (hasDescriptionScore(storedScore)) {
+  if (!forceRefresh && hasDescriptionScore(storedScore)) {
     const assessment = descriptionAssessmentState(listing, storedScore);
     document.dispatchEvent(new CustomEvent("rts:description-assessment", { detail: assessment }));
     return assessment;
@@ -229,7 +229,7 @@ async function requestDescriptionAssessment(listing, storedScore = null) {
 
   const cacheKey = `${DESCRIPTION_CACHE_PREFIX}${listing.listingId || "unknown"}`;
   const cached = await chrome.storage.local.get(cacheKey);
-  if (cached[cacheKey]?.fingerprint === descriptionFingerprint(description) &&
+  if (!forceRefresh && cached[cacheKey]?.fingerprint === descriptionFingerprint(description) &&
       hasDescriptionAssessmentScore(cached[cacheKey]?.result)) {
     const assessment = { status: "available", result: cached[cacheKey].result };
     document.dispatchEvent(new CustomEvent("rts:description-assessment", { detail: assessment }));
@@ -325,8 +325,8 @@ async function scanCurrentPage({ forceRefresh = false } = {}) {
         reviewsAssessment: reviewsAssessmentState(listing.reviewsAndImages),
       }
     }));
-    const descriptionPromise = requestDescriptionAssessment(listing, listingScore);
-    const reviewsPromise = requestReviewsAssessment(listing);
+    const descriptionPromise = requestDescriptionAssessment(listing, listingScore, { forceRefresh });
+    const reviewsPromise = requestReviewsAssessment(listing, { forceRefresh });
 
     for (let i = 0; i < images.length; i++) {
       const image = images[i];

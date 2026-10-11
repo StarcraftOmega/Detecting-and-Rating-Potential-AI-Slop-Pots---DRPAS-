@@ -6,6 +6,7 @@ const analyzedResults = new Map();
 const inFlightImages = new Set();
 const evaluatedReviewListings = new Set();
 let pageScanPromise = null;
+const RESCAN_INTERVAL_MS = 5000;
 
 function sendRuntimeMessage(message) {
   try {
@@ -26,6 +27,12 @@ function isListingPage(location = window.location) {
 
 function getImageUrl(img) {
   return img.currentSrc || img.src || img.getAttribute("data-src") || "";
+}
+
+function getImageListingId(img) {
+  const link = img.closest?.('a[href*="/listing/"]');
+  const match = String(link?.href || "").match(/\/listing\/(\d+)(?:[/?#]|$)/i);
+  return match?.[1] || "";
 }
 
 function isListingImage(img) {
@@ -64,7 +71,12 @@ function collectImages(imageElements) {
     const url = getImageUrl(img);
     if (seen.has(url)) continue;
     seen.add(url);
-    images.push({ url, alt: img.alt?.trim() || "" });
+    const listingId = getImageListingId(img);
+    images.push({
+      url,
+      alt: img.alt?.trim() || "",
+      ...(listingId ? { listingId } : {}),
+    });
     if (images.length >= MAX_IMAGES) break;
   }
   return images;
@@ -324,8 +336,12 @@ async function analyzePageImages(data) {
     }
 
     for (const image of data.listing.images) {
-      if (localCached.has(image.url)) continue;
+      if (localCached.has(image.url) && !image.listingId) continue;
       if (analyzedResults.has(image.url)) {
+        if (image.listingId) {
+          imagesToAnalyze.push(image);
+          continue;
+        }
         setImageBadges(image.url, analyzedResults.get(image.url));
         continue;
       }
@@ -341,7 +357,7 @@ async function analyzePageImages(data) {
           kind: "aid:analyze",
           imageUrl: image.url,
           imageHash,
-          meta: data.listing,
+          meta: { ...data.listing, listingId: image.listingId || data.listing.listingId },
         });
         if (response?.ok) {
           analyzedResults.set(image.url, response.result);
@@ -448,6 +464,9 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
   if (typeof window.setTimeout === "function") {
     for (const delay of [1500, 4000, 8000]) {
       window.setTimeout(scan, delay);
+    }
+    if (typeof window.setInterval === "function") {
+      window.setInterval(scan, RESCAN_INTERVAL_MS);
     }
 
     if (typeof MutationObserver !== "undefined") {

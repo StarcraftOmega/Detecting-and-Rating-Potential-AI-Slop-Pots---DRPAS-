@@ -181,6 +181,16 @@ async function analyze(message) {
         : 0,
     };
     await cachePut(resultKey, result);
+    if (isSettingEnabled(await getSettings(), "serverUploadEnabled")) {
+      await apiClient.submitImageScore({
+        imageHash: response.imageId,
+        imageUrl,
+        aiScore: score,
+        modelVersion: result.modelVersion,
+      }).catch(async (error) => {
+        await writeDiagnostic("image-score-upload-failed", { error: error.message });
+      });
+    }
     return result;
   })().finally(() => inflight.delete(key));
 
@@ -193,7 +203,8 @@ async function serverListing(message) {
   const listingId = typeof message?.meta?.listingId === "string"
     ? message.meta.listingId : "";
   const username = typeof message?.meta?.username === "string"
-    ? message.meta.username : "";
+    ? message.meta.username
+    : typeof message?.meta?.seller === "string" ? message.meta.seller : "";
   if (!listingId) return null;
   const key = listingKey("etsy", listingId);
   if (!key) return null;
@@ -215,20 +226,23 @@ async function serverListing(message) {
 }
 
 async function serverImageResult(message, imageHash, manifest) {
+  if (!isSettingEnabled(await getSettings(), "serverInfoEnabled")) return null;
   const listing = await serverListing(message);
-  const image = listing?.images.find((candidate) => candidate.imageId === imageHash);
+  const listingImage = listing?.images.find((candidate) => candidate.imageId === imageHash);
+  const image = listingImage || await apiClient.getImageScore(imageHash)
+    .then((response) => response?.image || null)
+    .catch(() => null);
   if (!image) return null;
   const threshold = Number(manifest.threshold ?? 0.65);
   return {
-    score: image.score,
-    label: image.score >= threshold ? "likely-ai" : "likely-real",
+    score: Number(image.score ?? image.ai_score),
+    label: Number(image.score ?? image.ai_score) >= threshold ? "likely-ai" : "likely-real",
     threshold,
-    modelVersion: image.modelVersion,
-    imageId: image.imageId,
+    modelVersion: image.modelVersion || image.model_version || "server",
+    imageId: image.imageId || image.image_hash,
     processingTimeMs: 0,
     source: "server",
-    calculatedAt: listing.calculatedAt,
-    listingRating: listing.overall,
+    ...(listing ? { calculatedAt: listing.calculatedAt, listingRating: listing.overall } : {}),
   };
 }
 
@@ -313,6 +327,9 @@ async function syncListingResult(message) {
     overall: aggregateScore,
     descriptionScore: description?.score ?? null,
     descriptionRationale: description?.rationale || "",
+    username: typeof listing.username === "string"
+      ? listing.username
+      : typeof listing.seller === "string" ? listing.seller : "",
     calculatedAt: new Date().toISOString(),
     modelVersion: images.find((image) => image.modelVersion)?.modelVersion || "local",
     images: images.map((image) => ({
@@ -349,8 +366,11 @@ async function syncListingResult(message) {
     })),
   });
   if (key) {
+    const serverScore = normalizeServerScore(response);
     await cacheListing(key, {
       ...localRecord,
+      ...(serverScore || {}),
+      images: localRecord.images,
       serverSynced: true,
       source: "server",
     });
@@ -501,8 +521,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const key = listingKey(payload.platform, payload.listingId);
         if (key) {
           const cached = await getCachedListing(key);
+          const serverScore = normalizeServerScore(response);
           return cacheListing(key, {
             ...(cached || {}),
+            ...(serverScore || {}),
+            images: cached?.images || serverScore?.images || [],
+            username: typeof payload.username === "string" ? payload.username : cached?.username || "",
             serverSynced: true,
             source: "server",
           });

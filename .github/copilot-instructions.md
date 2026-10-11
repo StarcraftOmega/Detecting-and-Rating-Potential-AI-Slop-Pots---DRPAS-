@@ -72,8 +72,11 @@ default.
 - Server-backed signals include trusted creators, Etsy user reviews, extension
   user reports, stored listing ratings, and per-image analysis scores. These
   are account-gated features and must use authenticated API requests, except
-  for the temporary public score-sync path documented below. The temporary
-  `/api/scores` path permits unauthenticated score reads and writes only.
+  for the temporary public score-sync paths documented below. The temporary
+  `/api/scores` listing routes and `/api/scores/images` hash-only routes permit
+  unauthenticated score reads and writes. Hash-only image records may contain
+  only an image hash, normalized score, model metadata, optional URL, and
+  timestamp; they must not require seller or listing metadata.
 - Trusted-creator status is seller-scoped, never listing-scoped. Extract the
   current seller name from `[data-seller-cred-anchor]` and query the dedicated
   `/api/scores/trusted-creator/:username` route independently of the current
@@ -99,6 +102,10 @@ default.
   Server image results must be checked before the local inference cache;
   matching results skip ONNX processing, while missing or stale images fall
   back to local inference.
+- Page-wide images that are not part of the current listing must use the
+  hash-only image-score path when synchronized. They may be looked up and
+  stored without a listing ID, seller name, or listing score, and must never
+  be added to the current listing's evidence set.
 - Do not upload image bytes for server operations. Score submissions may
   include listing metadata, normalized scores, image hashes, and optional
   image URLs, but never image data. Any future remote image processing
@@ -413,8 +420,9 @@ production security or privacy design.
   settings.
 - Settings must enforce operation boundaries. During the hackathon,
   `serverUploadEnabled` may permit unauthenticated score writes, and
-  `serverInfoEnabled` may permit unauthenticated reads only for the temporary
-  `/api/scores` listing-score path. Other server-related toggles must still
+  `serverInfoEnabled` may permit unauthenticated reads for the temporary
+  `/api/scores` listing-score and `/api/scores/images` hash-only paths. Other
+  server-related toggles must still
   require a valid signed-in session.
   Disabling a toggle must prevent the corresponding request rather than
   sending it and ignoring the response. Return explicit errors or skipped
@@ -437,11 +445,13 @@ production security or privacy design.
   problems. Keep server responses structured so the UI can display the
   overall score, per-image scores, description rationale, source,
   model/scoring versions, reasons, and calculation timestamps.
-- Backend score writes must validate numeric scores to the unit interval,
+- Backend score and hash-only image writes must validate numeric scores to the
+  unit interval,
   cap submissions at 100 images, and store image hashes rather than image
   bytes. Score snapshots store `description_score` and
-  `description_rationale`; image rows belong to the inserted snapshot.
-  Database constraints and validation must remain aligned.
+  `description_rationale`; listing image rows belong to the inserted
+  snapshot, while page-wide hash-only image rows belong to the standalone
+  image-score table. Database constraints and validation must remain aligned.
 - Applying `backend/database/schema.sql` to a local checkout does not update
   an existing Supabase project automatically. When schema fields change,
   provide and apply an explicit Supabase SQL migration such as

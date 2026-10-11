@@ -3,6 +3,67 @@ const supabase = require("../config/supabase");
 
 const router = express.Router();
 
+function readImageInput(body) {
+    const imageHash = typeof body?.imageHash === "string"
+        ? body.imageHash.trim().slice(0, 256) : "";
+    const aiScore = body?.aiScore;
+    if (!imageHash || typeof aiScore !== "number" || !Number.isFinite(aiScore) ||
+        aiScore < 0 || aiScore > 1) {
+        return { error: "imageHash and aiScore between 0 and 1 are required" };
+    }
+    return {
+        value: {
+            imageHash,
+            aiScore,
+            imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.slice(0, 2000) : null,
+            modelVersion: typeof body.modelVersion === "string"
+                ? body.modelVersion.slice(0, 80) : null,
+        },
+    };
+}
+
+router.get("/images/:imageHash", async (req, res) => {
+    const imageHash = typeof req.params.imageHash === "string"
+        ? decodeURIComponent(req.params.imageHash).trim() : "";
+    if (!imageHash) return res.status(400).json({ error: "imageHash is required" });
+    try {
+        const { data, error } = await supabase
+            .from("standalone_image_scores")
+            .select("image_hash, image_url, ai_score, model_version, analyzed_at")
+            .eq("image_hash", imageHash)
+            .maybeSingle();
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: "Image score not found" });
+        res.json({ image: data });
+    } catch (error) {
+        console.error("Image score retrieval failed:", error.message);
+        res.status(500).json({ error: "Failed to retrieve image score" });
+    }
+});
+
+router.post("/images", async (req, res) => {
+    const parsed = readImageInput(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    try {
+        const { data, error } = await supabase
+            .from("standalone_image_scores")
+            .upsert({
+                image_hash: parsed.value.imageHash,
+                image_url: parsed.value.imageUrl,
+                ai_score: parsed.value.aiScore,
+                model_version: parsed.value.modelVersion,
+                analyzed_at: new Date().toISOString(),
+            }, { onConflict: "image_hash" })
+            .select("image_hash, image_url, ai_score, model_version, analyzed_at")
+            .single();
+        if (error) throw error;
+        res.status(201).json({ image: data });
+    } catch (error) {
+        console.error("Image score submission failed:", error.message);
+        res.status(500).json({ error: "Failed to save image score", detail: error.message });
+    }
+});
+
 router.get("/trusted-creator/:username", async (req, res) => {
     const username = typeof req.params.username === "string"
         ? decodeURIComponent(req.params.username).trim().slice(0, 500) : "";
