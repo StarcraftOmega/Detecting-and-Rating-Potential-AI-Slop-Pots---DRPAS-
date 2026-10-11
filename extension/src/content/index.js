@@ -102,9 +102,9 @@ function getText(doc, selectors) {
 function getListingId(doc = document, location = window.location) {
   if (!isListingPage(location)) return "";
   const pathMatch = String(location.pathname || "").match(/^\/listing\/(\d+)(?:\/|$)/i);
-  return doc.querySelector("[data-listing-id]")?.getAttribute("data-listing-id") ||
-    doc.querySelector("[data-product-id]")?.getAttribute("data-product-id") ||
-    pathMatch?.[1] || "";
+  return pathMatch?.[1] ||
+    doc.querySelector("[data-listing-id]")?.getAttribute("data-listing-id") ||
+    doc.querySelector("[data-product-id]")?.getAttribute("data-product-id") || "";
 }
 
 function collectPageData(doc = document, location = window.location, options = {}) {

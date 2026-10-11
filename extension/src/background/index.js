@@ -192,17 +192,20 @@ async function serverListing(message) {
   if (!isSettingEnabled(await getSettings(), "serverInfoEnabled")) return null;
   const listingId = typeof message?.meta?.listingId === "string"
     ? message.meta.listingId : "";
-  if (!listingId || !(await getAccessToken())) return null;
+  const username = typeof message?.meta?.username === "string"
+    ? message.meta.username : "";
+  if (!listingId) return null;
   const key = listingKey("etsy", listingId);
   if (!key) return null;
   const cached = await getCachedListing(key);
-  if (!(await getAccessToken())) return null;
-  if (cached?.calculatedAt && isFresh(cached.calculatedAt) && cached.serverSynced) {
+  if (cached?.calculatedAt && isFresh(cached.calculatedAt) && cached.serverSynced &&
+      typeof cached.username === "string" && cached.username.trim() &&
+      cached.username.trim().toLocaleLowerCase() === username.trim().toLocaleLowerCase()) {
     return cached;
   }
   if (serverListingInflight.has(key)) return serverListingInflight.get(key);
 
-  const request = apiClient.getListingScore("etsy", listingId)
+  const request = apiClient.getListingScore("etsy", listingId, username)
     .then((response) => normalizeServerScore(response))
     .then((score) => score ? cacheListing(key, score) : null)
     .catch(() => null)
@@ -285,7 +288,9 @@ async function syncListingResult(message) {
   const existing = key ? await getCachedListing(key) : null;
   if (existing?.calculatedAt && isFresh(existing.calculatedAt) &&
       existing.serverSynced && Array.isArray(existing.images) &&
-      existing.images.length >= images.length) {
+      existing.images.length >= images.length &&
+      (typeof listing?.description !== "string" || !listing.description.trim() ||
+        typeof existing.descriptionScore === "number")) {
     return { ok: true, cached: true, score: existing };
   }
   const imageScore = imageAggregate(images);
@@ -469,8 +474,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.kind === "aid:get-listing-score") {
     serverListing({ meta: {
       listingId: message.listingId,
+      username: message.username,
     } })
       .then((score) => sendResponse({ ok: true, available: Boolean(score), score }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (message?.kind === "aid:get-trusted-creator") {
+    getSettings().then(async (settings) => {
+      if (!isSettingEnabled(settings, "serverInfoEnabled")) {
+        throw new Error("shared server information is disabled in settings");
+      }
+      return apiClient.getTrustedCreator(message.username);
+    })
+      .then((assessment) => sendResponse({ ok: true, assessment }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
   }

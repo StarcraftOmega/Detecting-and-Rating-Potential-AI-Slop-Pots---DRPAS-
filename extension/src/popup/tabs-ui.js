@@ -100,6 +100,23 @@ document.addEventListener("rts:analysis-start", (event) => {
   updateScoreSummary();
 });
 
+function renderSellerAssessment(assessment) {
+  if (!sellerAssessment || !assessment) return;
+  if (assessment.status === "trusted") {
+    sellerAssessment.textContent = `${assessment.creator || "This seller"} is a trusted creator.`;
+    return;
+  }
+  if (assessment.status === "unknown") {
+    sellerAssessment.textContent = "Unknown creator. This seller is not listed as a trusted creator.";
+    return;
+  }
+  sellerAssessment.textContent = assessment.message || "Trusted creator status is unavailable.";
+}
+
+document.addEventListener("rts:seller-assessment", (event) => {
+  renderSellerAssessment(event.detail);
+});
+
 function renderDescriptionAssessment(assessment) {
   if (!descriptionAssessment || !assessment) return;
   if (assessment.status === "pending") {
@@ -115,7 +132,11 @@ function renderDescriptionAssessment(assessment) {
     return;
   }
   const result = assessment.result || {};
-  const score = Number(result.ai_likeness_score);
+  const score = result.ai_likeness_score;
+  if (typeof score !== "number" || !Number.isFinite(score) || score < 0 || score > 100) {
+    descriptionAssessment.textContent = "Description has not been processed yet.";
+    return;
+  }
   const classification = typeof result.classification === "string"
     ? result.classification
     : "assessment complete";

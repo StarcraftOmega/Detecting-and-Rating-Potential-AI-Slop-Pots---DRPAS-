@@ -1,15 +1,22 @@
-/*
- * Planned responsibility:
- * Read and manage trusted creator or seller information used as a bounded
- * contextual signal in listing ratings.
- *
- * Implementation notes:
- * - Use authenticated api-client requests for shared server data.
- * - Keep local user preferences, such as a personal trusted-seller list, in
- *   chrome.storage.local when appropriate.
- * - Return normalized signal objects with score, confidence, status, and
- *   reasons; trust must reduce risk without overriding strong evidence.
- * - Handle signed-out, expired-session, unavailable-server, and missing-seller
- *   states explicitly.
- * - Never store or log passwords, access tokens, or unnecessary personal data.
- */
+export function normalizeTrustedCreatorResponse(response, creator) {
+  const name = typeof creator === "string" ? creator.trim() : "";
+  if (!name) return { status: "unavailable", message: "No seller name was found." };
+  if (response?.serverChecked !== true) {
+    return { status: "unavailable", message: "Trusted creator status was not checked." };
+  }
+  const storedName = typeof response.username === "string" ? response.username.trim() : "";
+  if (storedName.toLocaleLowerCase() === name.toLocaleLowerCase() &&
+      response?.trustedCreatorScore === 1) {
+    return {
+      status: "trusted",
+      creator: name,
+    };
+  }
+  return { status: "unknown", creator: name };
+}
+
+export function lookupTrustedCreator(assessment, creator) {
+  const name = typeof creator === "string" ? creator.trim() : "";
+  if (!name) return { status: "unavailable", message: "No seller name was found." };
+  return normalizeTrustedCreatorResponse(assessment, name);
+}
